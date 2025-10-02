@@ -1,0 +1,84 @@
+import streamlit as st
+import numpy as np
+import plotly.graph_objects as go
+
+st.set_page_config(page_title="v–q (simple) • Diagrama fundamental", layout="centered")
+
+st.title("Curva Velocidad vs Flujo (modelo simple)")
+
+# --- Parámetros del modelo (Greenshields) ---
+st.sidebar.header("Parámetros (por carril)")
+vf = st.sidebar.slider("Velocidad libre Vf (km/h)", 40, 140, 100, step=5)
+kj = st.sidebar.slider("Densidad de atasco kj (veh/km/carril)", 100, 220, 160, step=5)
+
+# Densidad crítica y flujo máximo (por carril) en Greenshields
+kc = kj / 2.0
+vc = vf / 2.0
+qmax = vf * kj / 4.0
+
+# --- Curva v–q parametrizada por k ---
+k = np.linspace(1e-6, kj, 600)              # (evita 0 para no dividir por 0)
+v = vf * (1 - k / kj)                        # Greenshields: v = Vf * (1 - k/kj)
+q = k * v                                    # Ecuación fundamental: q = k * v
+
+# --- Selector de punto: "posición sobre la curva" ---
+st.markdown(
+    "Mueve el deslizador para **elegir un punto de la curva** (izquierda → derecha). "
+        "El sistema te dirá si está **congestionado** o **no**."
+        )
+        pos = st.slider("Posición sobre la curva", 0, 100, 25)
+        idx = int(round(pos / 100 * (len(k) - 1)))
+        k_sel, v_sel, q_sel = float(k[idx]), float(v[idx]), float(q[idx])
+
+        # Clasificación: fluido vs congestionado (solo usamos v y q visibles; k se infiere internamente)
+        estado = "NO congestionado (fluido)" if k_sel <= kc else "CONGESTIONADO"
+
+        # --- Figura v–q ---
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=q, y=v, mode="lines", name="Curva v–q (Greenshields)", line=dict(color="#1f77b4", width=3)))
+
+        # Punto seleccionado
+        fig.add_trace(go.Scatter(
+            x=[q_sel], y=[v_sel], mode="markers+text",
+                marker=dict(size=12, color="#d62728"),
+                    text=[f"Punto seleccionado"],
+                        textposition="top center",
+                            name="Punto"
+                            ))
+
+                            # Pico (Qmax)
+                            fig.add_vline(x=qmax, line=dict(color="gray", dash="dot"))
+                            fig.add_annotation(x=qmax, y=vc, text="Qmax", showarrow=True, arrowhead=2, yshift=+10)
+
+                            fig.update_layout(
+                                xaxis_title="Flujo q (veh/h/carril)",
+                                    yaxis_title="Velocidad v (km/h)",
+                                        height=520,
+                                            template="plotly_white",
+                                                margin=dict(l=40, r=20, t=20, b=40)
+                                                )
+
+                                                st.plotly_chart(fig, use_container_width=True)
+
+                                                # --- Métricas y diagnóstico ---
+                                                col1, col2, col3 = st.columns(3)
+                                                col1.metric("Qmax (por carril)", f"{qmax:,.0f} veh/h")
+                                                col2.metric("kc (densidad crítica)", f"{kc:,.1f} veh/km/carril")
+                                                col3.metric("v@Qmax", f"{vc:,.1f} km/h")
+
+                                                st.subheader("Diagnóstico del punto seleccionado")
+                                                st.markdown(f"""
+                                                - **Resultado:** **{estado}**
+                                                - **Valores del punto:**  
+                                                  • Flujo **q** = **{q_sel:,.0f}** veh/h/carril  
+                                                    • Velocidad **v** = **{v_sel:,.1f}** km/h  
+                                                      • (Interno) Densidad inferida **k = q/v** = **{k_sel:,.1f}** veh/km/carril  
+                                                      - **Criterio**: si \\(k \\le k_c = k_j/2\\) ⇒ **fluido**; si \\(k > k_c\\) ⇒ **congestionado**.
+                                                      """)
+
+                                                      st.caption(
+                                                          "Notas: Este prototipo usa el modelo de Greenshields (v–k lineal). "
+                                                              "En datos reales, la posición relativa del punto y, por tanto, la clasificación, "
+                                                                  "dependen de calibrar Vf y kj para cada tramo."
+                                                                  )
+                                                                  
